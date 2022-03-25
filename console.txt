@@ -1,0 +1,2 @@
+# Initialize memory (rev:3.63, ctm:0Mhz, cpuclk:0Mhz detected)
+# failed to initialize memory: InitRDRAM returned -14
