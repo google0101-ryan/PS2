@@ -6,12 +6,16 @@
 #include <intc.hpp>
 #include <ee_timers.hpp>
 #include <sif.hpp>
+#include <int128.h>
+#include <gs/gif.hpp>
+#include <dmac.hpp>
+#include <vu.hpp>
 
 class Bus
 {
 private:
     uint8_t bios[0x400000];
-    uint8_t eeRam[0x2000000];
+    uint8_t iopRam[0x200000];
     uint8_t eeScratchpad[1024*16];
 
     uint32_t KUSEG_MASKS[8] = 
@@ -25,26 +29,32 @@ private:
         /* KSEG2: Don't touch the address, it's fine */
         0xffffffff, 0x1fffffff,
     };
-
-    gs::GraphicsSynthesizer *gs;
-    INTC* intc;
-    Timers* timers;
-    SIF* sif;
     std::ofstream console;
 
     uint32_t MCH_RICM = 0, MCH_DRD = 0;
     uint8_t rdram_sdevid = 0;
 public:
+    uint8_t eeRam[0x2000000];
+    gs::GraphicsSynthesizer *gs;
+    INTC* intc;
+    Timers* timers;
+    SIF* sif;
+    GIF* gif;
+    DMAController* dmac;
+    VectorUnit* vu[2];
     Bus(std::string biosFilePath, gs::GraphicsSynthesizer *gs);
     void attachIntc(INTC* _intc) {intc = _intc;}
     void attachTimers(Timers* _timer) {timers = _timer;}
+    void attachGIF(GIF* _gif) {gif = _gif;}
 
     uint8_t Read8(uint32_t addr, bool ee);
     uint16_t Read16(uint32_t addr, bool ee);
     uint32_t Read32(uint32_t addr, bool ee);
     uint64_t Read64(uint32_t addr, bool ee);
+    Register Read128(uint32_t addr);
     void Write8(uint32_t addr, uint8_t data, bool ee);
     void Write16(uint32_t addr, uint16_t data, bool ee);
     void Write32(uint32_t addr, uint32_t data, bool ee);
     void Write64(uint32_t addr, uint64_t data, bool ee);
+    void Write128(uint32_t addr, Register data);
 };

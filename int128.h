@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-union uint128_t
+union Register
 {
     struct
     {
@@ -13,18 +13,20 @@ union uint128_t
     uint64_t ud[2];
     uint32_t uw[2];
 
-    uint128_t inline operator |(uint128_t val)
+    Register inline operator |(Register val)
     {
-        uint128_t data;
+        Register data;
         data.i.lo = i.lo | val.i.lo;
         data.i.hi = i.hi | val.i.hi;
 
         return data;
     }
 
-    uint128_t& operator=(const int value)
+    Register& operator=(const int value)
     {
         uw[0] = value;
         return *this;
     }
 };
+
+using uint128_t = unsigned __int128;

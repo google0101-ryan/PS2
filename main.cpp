@@ -7,6 +7,7 @@
 #include <GLFW/glfw3.h>
 #include <iostream>
 #include <gs/gs.hpp>
+#include <dmac.hpp>
 
 void error_callback( int error, const char *msg ) {
     std::string s;
@@ -50,10 +51,16 @@ int main(int argc, char** argv)
     gs::GraphicsSynthesizer GS;
     Bus* bus = new Bus(argv[1], &GS);
     EmotionEngine* cpu = new EmotionEngine(bus);
+    GIF* gif = new GIF(&GS);
+    DMAController* dmac = new DMAController(bus, cpu);
+    bus->vu[0] = new VectorUnit(cpu);
+    bus->vu[1] = new VectorUnit(cpu);
     INTC* intc = cpu->getIntc();
     Timers* timers = cpu->getTimers();
     bus->attachIntc(intc);
     bus->attachTimers(timers);
+    bus->attachGIF(gif);
+    bus->dmac = dmac;
 
     glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
     glClearDepth(0.0);
@@ -62,7 +69,7 @@ int main(int argc, char** argv)
     glfwSwapBuffers(window);
     glfwPollEvents();
 
-    while (!glfwWindowShouldClose(window))
+    while (true)
     {
         if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
             glfwSetWindowShouldClose(window, true);
@@ -77,13 +84,10 @@ int main(int argc, char** argv)
         {
             uint32_t cycles = 32;
             cpu->Clock(cycles);
-            timers->tick(cycles / 2);
 
-            if (intc->int_pending())
-            {
-                printf("[EE]: Interrupt");
-                cpu->exception(EmotionEngine::Exception::Interrupt, true);
-            }
+            cycles /= 2;
+            dmac->tick(cycles);
+            gif->tick(cycles);
 
             total_cycles += 32;
 
@@ -91,8 +95,6 @@ int main(int argc, char** argv)
             {
                 vblank_started = true;
                 GS.priv_regs.csr.vsint = true;
-
-                printf("[MAIN]: Rendering frame\n");
 
                 GS.renderer.render();
 
@@ -105,15 +107,11 @@ int main(int argc, char** argv)
             }
         }
 
-	printf("[MAIN]: VBLANK OFF\n");
-
-        intc->trigger(Interrupt::INT_VB_OFF);
+	    intc->trigger(Interrupt::INT_VB_OFF);
         vblank_started = false;
         GS.priv_regs.csr.vsint = false;
 
-	printf("[MAIN]: Swapping Buffers\n");
-
-        glfwSwapBuffers(window);
+	    glfwSwapBuffers(window);
         glfwPollEvents();
     }
     return 0;
