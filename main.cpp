@@ -8,12 +8,16 @@
 #include <iostream>
 #include <gs/gs.hpp>
 #include <dmac.hpp>
+#include <iop/iop.hpp>
+#include <iop/iop_intc.hpp>
 
 void error_callback( int error, const char *msg ) {
     std::string s;
     s = " [" + std::to_string(error) + "] " + msg + '\n';
     std::cerr << s << std::endl;
 }
+
+IOP* iop;
 
 int main(int argc, char** argv)
 {
@@ -57,10 +61,20 @@ int main(int argc, char** argv)
     bus->vu[1] = new VectorUnit(cpu);
     INTC* intc = cpu->getIntc();
     Timers* timers = cpu->getTimers();
+    SIO2* sio2 = new SIO2(bus);
+    iop = new IOP(bus);
+    IOP_INTC* iop_intc = new IOP_INTC(iop);
+    bus->vif[0] = new VIF(bus, 0);
+    bus->vif[1] = new VIF(bus, 1);
     bus->attachIntc(intc);
     bus->attachTimers(timers);
     bus->attachGIF(gif);
     bus->dmac = dmac;
+    bus->sio2 = sio2;
+
+    iop->reset();
+    iop->set_disassembly(true);
+    iop_intc->reset();
 
     glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
     glClearDepth(0.0);
@@ -69,7 +83,7 @@ int main(int argc, char** argv)
     glfwSwapBuffers(window);
     glfwPollEvents();
 
-    while (true)
+    while (!glfwWindowShouldClose(window))
     {
         if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
             glfwSetWindowShouldClose(window, true);
@@ -87,7 +101,12 @@ int main(int argc, char** argv)
 
             cycles /= 2;
             dmac->tick(cycles);
+            bus->vif[0]->tick(cycles);
+            bus->vif[1]->tick(cycles);
             gif->tick(cycles);
+
+            cycles /= 4;
+            iop->run(cycles);
 
             total_cycles += 32;
 
@@ -104,10 +123,12 @@ int main(int argc, char** argv)
                     intc->trigger(Interrupt::INT_GS);
                 
                 intc->trigger(Interrupt::INT_VB_ON);
+                iop_intc->assert_irq(0);
             }
         }
 
 	    intc->trigger(Interrupt::INT_VB_OFF);
+        iop_intc->assert_irq(11);
         vblank_started = false;
         GS.priv_regs.csr.vsint = false;
 

@@ -41,6 +41,9 @@ void VectorUnit::special1(Instruction instr)
     case 0x2C:
         vsub(vu_instr);
         break;
+    case 0x30:
+        viadd(vu_instr);
+        break;
     case 0x3C ... 0x3F: 
         special2(instr);
         break;
@@ -48,6 +51,15 @@ void VectorUnit::special1(Instruction instr)
         printf("[VU0]: Unimplemented special 0x%X\n", function);
         exit(1);
     }
+}
+
+void VectorUnit::viadd(VUInstr instr)
+{
+    uint16_t id = instr.id;
+    uint16_t is = instr.is;
+    uint16_t it = instr.it;
+
+    regs.vi[id] = regs.vi[is] + regs.vi[it];
 }
 
 void VectorUnit::vsub(VUInstr instr)

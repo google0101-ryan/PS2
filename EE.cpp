@@ -1,6 +1,43 @@
 #include <EE.hpp>
 #include <cstring>
 
+static inline float overflow_check(uint32_t value)
+{
+    if ((value & 0x7F800000) == 0x7F800000)
+        value = (value & 0x80000000) | 0x7F7FFFFF;
+    return *(float*)&value;
+}
+
+void EE_COP1::execute(Instruction instr)
+{
+    uint16_t function = instr.r_type.funct;
+    switch (function)
+    {
+    case 0x18: op_adda(instr); break;
+    case 0x1C: op_madd(instr); break;
+    }
+}
+
+void EE_COP1::op_adda(Instruction instr)
+{
+    uint16_t fs = instr.r_type.rd;
+    uint16_t ft = instr.r_type.rt;
+
+    acc.fint = fpr[fs].fint + fpr[ft].fint;
+}
+
+void EE_COP1::op_madd(Instruction instr)
+{
+    uint16_t fs = instr.r_type.rd;
+    uint16_t ft = instr.r_type.rt;
+    uint16_t fd = instr.r_type.sa;
+
+    float reg1 = overflow_check(fpr[fs].uint);
+    float reg2 = overflow_check(fpr[ft].uint);
+    float accumulator = overflow_check(acc.uint);
+    fpr[fs].fint = accumulator + (reg1 * reg2);
+}
+
 EmotionEngine::EmotionEngine(Bus* _bus)
 : bus(_bus),
 intc(INTC(this)),
@@ -59,7 +96,12 @@ void EmotionEngine::Clock(uint32_t cycles)
     for (int cycle = cycles; cycle > 0; cycle--)
     {
         instr = next_instr;
-        
+
+        if (pc == 0x80001000)
+            printf("[EE]: Entering Kernel\n");
+        if (pc == 0x00081FC0)
+            printf("[EE]: Entering EENULL\n");
+
         fetch_next();
 
         skip_branch_delay = false;
@@ -68,7 +110,7 @@ void EmotionEngine::Clock(uint32_t cycles)
         if (instr.value == 0)
         {
             //printf("[EE]: NOP\n");
-            return;
+            continue;
         }
         
         switch (instr.opcode)
@@ -89,10 +131,13 @@ void EmotionEngine::Clock(uint32_t cycles)
         case 0x0E: xori(); break;
         case 0x0F: lui(); break;
         case 0x10: op_cop0(); break;
+        case 0x11: op_cop1(); break;
         case 0x12: op_cop2(); break;
         case 0x14: beql(); break;
         case 0x15: bnel(); break;
         case 0x19: daddiu(); break;
+        case 0x1A: ldl(); break;
+        case 0x1B: ldr(); break;
         case 0x1C: mmi(); break;
         case 0x1E: lq(); break;
         case 0x1F: sq(); break;
@@ -101,9 +146,12 @@ void EmotionEngine::Clock(uint32_t cycles)
         case 0x23: lw(); break;
         case 0x24: lbu(); break;
         case 0x25: lhu(); break;
+        case 0x27: lwu(); break;
         case 0x28: sb(); break;
         case 0x29: sh(); break;
         case 0x2B: sw(); break;
+        case 0x2C: sdl(); break;
+        case 0x2D: sdr(); break;
         case 0x2F: cache(); break;
         case 0x37: ld(); break;
         case 0x39: swc1(); break;
@@ -142,6 +190,9 @@ void EmotionEngine::special()
         break;
     case 0x04:
         sllv();
+        break;
+    case 0x06:
+        srlv();
         break;
     case 0x07:
         srav();
@@ -208,6 +259,9 @@ void EmotionEngine::special()
         break;
     case 0x38:
         dsll();
+        break;
+    case 0x3A:
+        dsrl();
         break;
     case 0x3C:
         dsll32();
@@ -496,6 +550,46 @@ void EmotionEngine::op_cop0()
     }
 }
 
+void EmotionEngine::op_cop1()
+{
+    uint32_t fmt = (instr.value >> 21) & 0x1F;
+    switch (fmt)
+    {
+    case 0x04:
+        mtc1();
+        break;
+    case 0x06:
+        ctc1();
+        break;
+    case 0x10:
+        cop1.execute(instr);
+        break;
+    default:
+        printf("[EE]: Unimplemented COP1 0x%X\n", fmt);
+        exit(1);
+    }
+}
+
+void EmotionEngine::mtc1()
+{
+    uint16_t fs = instr.r_type.rd;
+    uint16_t rt = instr.r_type.rt;
+
+    cop1.fpr[fs].uint = regs[rt].uw[0];
+}
+
+void EmotionEngine::ctc1()
+{
+    uint16_t fs = instr.r_type.rd;
+    uint16_t rt = instr.r_type.rt;
+
+    switch (fs)
+    {
+    case 0: cop1.fcr0.value = regs[rt].uw[0]; break;
+    case 31: cop1.fcr31.value = regs[rt].uw[0]; break;
+    }
+}
+
 void EmotionEngine::op_cop2()
 {
     uint32_t fmt = (instr.value >> 21) & 0x1F;
@@ -576,6 +670,51 @@ void EmotionEngine::daddiu()
 
     int64_t reg = regs[rs].ud[0];
     regs[rt].ud[0] = reg + offset;
+}
+
+void EmotionEngine::ldl()
+{
+    static const uint64_t LDL_MASK[8] =
+    {
+        0x00ffffffffffffffULL, 0x0000ffffffffffffULL, 0x000000ffffffffffULL, 0x00000000ffffffffULL,
+        0x0000000000ffffffULL, 0x000000000000ffffULL, 0x00000000000000ffULL, 0x0000000000000000ULL
+    };
+    static const uint8_t LDL_SHIFT[8] = { 56, 48, 40, 32, 24, 16, 8, 0 };
+
+    uint16_t rt = instr.i_type.rt;
+    uint16_t base = instr.i_type.rs;
+    int16_t offset = (int16_t)instr.i_type.immediate;
+
+    uint32_t addr = offset + regs[base].uw[0];
+    uint32_t aligned_addr = addr & ~0x7;
+    uint32_t shift = addr & 0x7;
+
+    auto dword = bus->Read64(aligned_addr, true);
+    uint64_t result = (regs[rt].ud[0] & LDL_MASK[shift]) | (dword << LDL_SHIFT[shift]);
+    regs[rt].ud[0] = result;
+}
+
+void EmotionEngine::ldr()
+{
+    static const uint64_t LDR_MASK[8] =
+    {
+        0x0000000000000000ULL, 0xff00000000000000ULL, 0xffff000000000000ULL, 0xffffff0000000000ULL,
+        0xffffffff00000000ULL, 0xffffffffff000000ULL, 0xffffffffffff0000ULL, 0xffffffffffffff00ULL
+    };
+    static const uint8_t LDR_SHIFT[8] = { 0, 8, 16, 24, 32, 40, 48, 56 };
+
+
+    uint16_t rt = instr.i_type.rt;
+    uint16_t base = instr.i_type.rs;
+    int16_t offset = (int16_t)instr.i_type.immediate;
+
+    uint32_t addr = offset + regs[base].uw[0];
+    uint32_t aligned_addr = addr & ~0x7;
+    uint32_t shift = addr & 0x7;
+
+    auto dword = bus->Read64(aligned_addr, true);
+    uint64_t result = (regs[rt].ud[0] & LDR_MASK[shift]) | (dword << LDR_SHIFT[shift]);
+    regs[rt].ud[0] = result;
 }
 
 void EmotionEngine::div()
@@ -833,6 +972,22 @@ void EmotionEngine::lhu()
     //printf("[EE]: LHU %s, 0x%02X(%s)\n", regNames[rt].c_str(), offset, regNames[base].c_str());
 }
 
+void EmotionEngine::lwu()
+{
+    uint16_t rt = instr.i_type.rt;
+    uint16_t base = instr.i_type.rs;
+    int16_t offset = (int16_t)instr.i_type.immediate;
+
+    uint32_t vaddr = offset + regs[base].uw[0];
+
+    if (vaddr & 0x3)
+    {
+        exception(Exception::AddrErrorLoad, true);
+    }
+    else
+        regs[rt].ud[0] = bus->Read32(vaddr, true);
+}
+
 void EmotionEngine::sb()
 {
     uint16_t base = instr.i_type.rs;
@@ -882,6 +1037,50 @@ void EmotionEngine::sw()
     }
     else
         bus->Write32(vaddr, data, true);
+}
+
+void EmotionEngine::sdl()
+{
+    static const uint64_t SDL_MASK[8] =
+    {
+        0xffffffffffffff00ULL, 0xffffffffffff0000ULL, 0xffffffffff000000ULL, 0xffffffff00000000ULL,
+        0xffffff0000000000ULL, 0xffff000000000000ULL, 0xff00000000000000ULL, 0x0000000000000000ULL
+    };
+    static const uint8_t SDL_SHIFT[8] = { 56, 48, 40, 32, 24, 16, 8, 0 };
+
+    uint16_t rt = instr.i_type.rt;
+    uint16_t base = instr.i_type.rs;
+    int16_t offset = (int16_t)instr.i_type.immediate;
+
+    uint32_t addr = offset + regs[base].uw[0];
+    uint32_t aligned_addr = addr & ~0x7;
+    uint32_t shift = addr & 0x7;
+
+    auto dword = bus->Read64(aligned_addr, true);
+    dword = (regs[rt].ud[0] >> SDL_SHIFT[shift]) | (dword & SDL_MASK[shift]);
+    bus->Write64(aligned_addr, dword, true);
+}
+
+void EmotionEngine::sdr()
+{
+    static const uint64_t SDR_MASK[8] =
+    {
+        0x0000000000000000ULL, 0x00000000000000ffULL, 0x000000000000ffffULL, 0x0000000000ffffffULL,
+        0x00000000ffffffffULL, 0x000000ffffffffffULL, 0x0000ffffffffffffULL, 0x00ffffffffffffffULL
+    };
+    static const uint8_t SDR_SHIFT[8] = { 0, 8, 16, 24, 32, 40, 48, 56 };
+    
+    uint16_t rt = instr.i_type.rt;
+    uint16_t base = instr.i_type.rs;
+    int16_t offset = (int16_t)instr.i_type.immediate;
+
+    uint32_t addr = offset + regs[base].uw[0];
+    uint32_t aligned_addr = addr & ~0x7;
+    uint32_t shift = addr & 0x7;
+
+    auto dword = bus->Read64(aligned_addr, true);
+    dword = (regs[rt].ud[0] << SDR_SHIFT[shift]) | (dword & SDR_MASK[shift]);
+    bus->Write64(aligned_addr, dword, true);
 }
 
 void EmotionEngine::ld()
@@ -981,6 +1180,16 @@ void EmotionEngine::sllv()
     uint32_t reg = regs[rt].uw[0];
     uint16_t sa = regs[rs].uw[0] & 0x3F;
     regs[rd].ud[0] = (int32_t)(reg << sa);
+}
+
+void EmotionEngine::srlv()
+{
+    uint16_t rs = instr.r_type.rs;
+    uint16_t rd = instr.r_type.rd;
+    uint16_t rt = instr.r_type.rt;
+
+    uint16_t sa = regs[rs].uw[0] & 0x3F;
+    regs[rd].ud[0] = (int32_t)(regs[rt].uw[0] >> sa);
 }
 
 void EmotionEngine::srav()
@@ -1228,6 +1437,15 @@ void EmotionEngine::dsll()
     regs[rd].ud[0] = (int32_t)(regs[rt].uw[0] >> sa);
 
     //printf("[EE]: DSLL %s, %s, 0x%02X\n", regNames[rd].c_str(), regNames[rt].c_str(), sa);
+}
+
+void EmotionEngine::dsrl()
+{
+    uint16_t sa = instr.r_type.sa;
+    uint16_t rd = instr.r_type.rd;
+    uint16_t rt = instr.r_type.rt;
+
+    regs[rd].ud[0] = regs[rt].ud[0] >> sa;
 }
 
 void EmotionEngine::dsll32()

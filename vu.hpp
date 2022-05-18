@@ -67,6 +67,7 @@ public:
     void qmtc2(Instruction instr); // 0x05
     void ctc2(Instruction instr); // 0x06
     void special1(Instruction instr);
+    void viadd(VUInstr instr);
     void vsub(VUInstr instr);
     void special2(Instruction instr); // 0x3x
     void vsqi(VUInstr instr); // 0x35

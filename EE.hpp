@@ -239,11 +239,16 @@ private:
     void xori(); // 0x0E
     void lui(); // 0x0F
     void op_cop0(); // 0x10
+    void op_cop1(); // 0x11
+    void mtc1();
+    void ctc1();
+    void cfc1();
     void op_cop2(); // 0x12
     void beql(); // 0x14
     void bnel(); // 0x15
     void daddiu(); // 0x19
-    void div(); // 0x1A
+    void ldl(); // 0x1A
+    void ldr(); // 0x1B
     void mmi(); // 0x1C
     void mmi2(); // 0x09 (MMI)
     void pand(); // 0x12 (MMI2)
@@ -258,9 +263,12 @@ private:
     void lw(); // 0x23
     void lbu(); // 0x24
     void lhu(); // 0x25
+    void lwu(); // 0x27
     void sb(); // 0x28
     void sh(); // 0x29
     void sw(); // 0x2B
+    void sdl(); // 0x2C
+    void sdr(); // 0x2D
     void cache() {} // 0x2F
     void ld(); // 0x37
     void swc1(); // 0x39
@@ -270,6 +278,7 @@ private:
     void srl(); // 0x02
     void sra(); // 0x03
     void sllv(); // 0x04
+    void srlv(); // 0x06
     void srav(); // 0x07
     void jr(); // 0x08
     void jalr(); // 0x09
@@ -281,6 +290,7 @@ private:
     void dsllv(); // 0x14
     void dsrav(); // 0x17
     void mult(); // 0x18
+    void div(); // 0x1A
     void divu(); // 0x1B
     void addu(); // 0x21
     void subu(); // 0x23
@@ -292,6 +302,7 @@ private:
     void dadd(); // 0x2C
     void daddu(); // 0x2D
     void dsll(); // 0x38
+    void dsrl(); // 0x3A
     void dsll32(); // 0x3C
     void dsrl32(); // 0x3E
     void dsra32(); // 0x3F
