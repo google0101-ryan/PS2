@@ -129,9 +129,9 @@ void IOP::print_state()
     printf("lo:$%08X\thi:$%08X\n", LO, HI);
 }
 
-void IOP::set_disassembly(bool dis)
+void IOP::set_disassembly(bool disasm)
 {
-    can_disassemble = dis;
+    can_disassemble = disasm;
 }
 
 void IOP::jp(uint32_t addr)
