@@ -108,9 +108,9 @@ public:
         switch (addr)
         {
         case 0x1F801450:
-            return 0;
+            return 0x20;
         case 0x1F801010:
-            return 0;
+            return 0x20;
         case 0x1F801070:
             return iop_intc->read_istat();
         case 0x1F801074:

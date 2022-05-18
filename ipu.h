@@ -1,6 +1,7 @@
 #pragma once
 
 #include <int128.h>
+#include <queue>
 
 class Bus;
 
@@ -61,4 +62,5 @@ public:
 private:
     Bus* bus;
     IPURegs regs = {};
+    std::queue<uint32_t> fifo;
 };

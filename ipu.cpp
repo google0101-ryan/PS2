@@ -45,8 +45,12 @@ void IPU::write_fifo(uint32_t, uint128_t){}
 void IPU::decode_command(IPUCommand cmd)
 {
     uint32_t opcode = cmd.code;
+    std::queue<uint32_t> empty;
     switch (opcode)
     {
+    case 0x00:
+        fifo.swap(empty);
+        break;
     default:
         printf("[IPU] Unknown command %d\n", opcode);
     }
